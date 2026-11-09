@@ -1,0 +1,69 @@
+name: Build APK from zip
+
+# Put PyRunner.zip (the whole project) in the repo root, then run this workflow.
+# It unzips the project, builds the debug APK and uploads it as an artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_path:
+        description: 'Path of the zip file inside the repo'
+        required: true
+        default: 'PyRunner.zip'
+  push:
+    paths:
+      - '*.zip'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick zip file
+        id: pick
+        env:
+          ZIP_INPUT: ${{ inputs.zip_path }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            Z="$ZIP_INPUT"
+          else
+            Z="$(ls -t ./*.zip | head -n 1)"
+          fi
+          if [ ! -f "$Z" ]; then
+            echo "Zip not found: $Z"
+            exit 1
+          fi
+          echo "zip=$Z" >> "$GITHUB_OUTPUT"
+
+      - name: Extract project
+        env:
+          ZIP_FILE: ${{ steps.pick.outputs.zip }}
+        run: |
+          rm -rf build_src && mkdir build_src
+          unzip -q "$ZIP_FILE" -d build_src
+          GRADLE_FILE="$(find build_src -maxdepth 3 -name 'settings.gradle*' | head -n 1)"
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "No settings.gradle(.kts) found inside the zip"
+            exit 1
+          fi
+          echo "PROJECT_DIR=$(dirname "$GRADLE_FILE")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PyRunner-debug
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
