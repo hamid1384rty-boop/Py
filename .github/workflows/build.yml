@@ -55,6 +55,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      # Put the 3.11 interpreter first on PATH so Chaquopy's build step uses it.
+      - name: Use Python 3.11 for Chaquopy
+        env:
+          PY_PATH: ${{ steps.py.outputs.python-path }}
+        run: |
+          echo "$(dirname "$PY_PATH")" >> "$GITHUB_PATH"
+          "$PY_PATH" --version
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -66,8 +74,6 @@ jobs:
 
       - name: Build debug APK
         working-directory: ${{ env.PROJECT_DIR }}
-        env:
-          CHAQUOPY_PYTHON: ${{ steps.py.outputs.python-path }}
         run: gradle assembleDebug --no-daemon
 
       - uses: actions/upload-artifact@v4
